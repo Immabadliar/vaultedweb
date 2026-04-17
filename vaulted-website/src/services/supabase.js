@@ -1,15 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://uqpzuyfsrxfruylfterm.supabase.co'
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Kp1f6hVK0n_KnT4aun1J3Q_By13rMuF'
 
-console.log('Supabase URL:', supabaseUrl ? 'configured' : 'missing')
-console.log('Supabase Anon Key:', supabaseAnonKey ? 'configured' : 'missing')
-console.log('Full URL:', supabaseUrl)
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
-}
+console.log('Supabase URL:', supabaseUrl)
 
 // Test connectivity by fetching the Supabase health endpoint
 async function testSupabaseConnectivity() {
