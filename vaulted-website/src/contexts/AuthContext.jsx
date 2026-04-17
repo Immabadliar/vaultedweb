@@ -17,28 +17,46 @@ export function AuthProvider({ children }) {
       try {
         console.log('Initializing auth...')
         
-        // Try to get session from URL first (for OAuth callbacks)
-        // Then fall back to stored session with a short timeout
-        const { data: { session: urlSession } } = await supabase.auth.getSession();
+        // First check for existing session
+        const { data: { session: existingSession } } = await supabase.auth.getSession()
         
         if (!isMounted) return;
-        setSession(urlSession ?? null)
 
-        if (urlSession?.user?.id) {
-          console.log('User logged in:', urlSession.user.id)
+        if (existingSession?.user) {
+          // Session exists, use it
+          setSession(existingSession)
+          console.log('Session restored from storage:', existingSession.user.id)
           try {
-            const p = await getProfile(urlSession.user.id)
+            const p = await getProfile(existingSession.user.id)
             if (isMounted) setProfile(p)
           } catch (err) {
             console.log('No profile yet - user needs to complete onboarding')
             if (isMounted) setProfile(null)
           }
         } else {
-          console.log('No active session - showing auth screen')
+          // Try to get user from URL (OAuth callback) or check if we can refresh
+          try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user && isMounted) {
+              // Refreshed valid session
+              const { data: { session } } = await supabase.auth.getSession()
+              setSession(session)
+              console.log('Session refreshed:', user.id)
+              try {
+                const p = await getProfile(user.id)
+                if (isMounted) setProfile(p)
+              } catch (err) {
+                if (isMounted) setProfile(null)
+              }
+            } else {
+              console.log('No active session - showing auth screen')
+            }
+          } catch (e) {
+            console.log('No active session - showing auth screen')
+          }
         }
       } catch (err) {
         console.error('Auth initialization error:', err.message);
-        // On error, still set loading to false so user can interact
       } finally {
         if (isMounted) setLoading(false)
       }
@@ -52,11 +70,12 @@ export function AuthProvider({ children }) {
         console.warn('Auth initialization timeout - setting loading to false')
         setLoading(false)
       }
-    }, 5000) // 5 second timeout
+    }, 10000) // 10 second timeout to allow for session restoration
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_, nextSession) => {
+      async (event, nextSession) => {
         if (!isMounted) return;
+        console.log('Auth state change:', event)
         setSession(nextSession)
 
         if (nextSession?.user?.id) {
