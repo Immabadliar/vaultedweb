@@ -2,6 +2,11 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
 import { getProfile } from '../services/users'
 
+function isNewUserError(err) {
+  const msg = err?.message || ''
+  return msg.includes('No rows') || msg.includes('PGRST116') || msg.includes('null')
+}
+
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
@@ -13,64 +18,66 @@ export function AuthProvider({ children }) {
     let isMounted = true;
     let timeout;
 
-    const initAuth = async () => {
+const initAuth = async () => {
       try {
         console.log('Initializing auth...')
         
-        // First check for existing session
+        // Check for session - don't wait for refresh to complete
         const { data: { session: existingSession } } = await supabase.auth.getSession()
         
         if (!isMounted) return;
 
         if (existingSession?.user) {
-          // Session exists, use it
           setSession(existingSession)
-          console.log('Session restored from storage:', existingSession.user.id)
-          try {
-            const p = await getProfile(existingSession.user.id)
-            if (isMounted) setProfile(p)
-          } catch (err) {
-            console.log('No profile yet - user needs to complete onboarding')
-            if (isMounted) setProfile(null)
-          }
+          console.log('Session found:', existingSession.user.id)
+          // Load profile async in background
+          loadProfile(existingSession.user.id)
         } else {
-          // Try to get user from URL (OAuth callback) or check if we can refresh
+          console.log('No session - will check if we can refresh')
+          // Try to get user (may refresh session)
           try {
             const { data: { user } } = await supabase.auth.getUser()
             if (user && isMounted) {
-              // Refreshed valid session
-              const { data: { session } } = await supabase.auth.getSession()
-              setSession(session)
+              setSession({ user })
               console.log('Session refreshed:', user.id)
-              try {
-                const p = await getProfile(user.id)
-                if (isMounted) setProfile(p)
-              } catch (err) {
-                if (isMounted) setProfile(null)
-              }
-            } else {
-              console.log('No active session - showing auth screen')
+              loadProfile(user.id)
             }
           } catch (e) {
-            console.log('No active session - showing auth screen')
+            console.log('No session found')
           }
         }
       } catch (err) {
-        console.error('Auth initialization error:', err.message);
+        console.error('Auth init error:', err.message);
       } finally {
         if (isMounted) setLoading(false)
       }
     }
 
+    // Separate function to load profile
+    const loadProfile = async (userId) => {
+      if (!userId) return
+      try {
+        const p = await getProfile(userId)
+        if (isMounted) setProfile(p)
+      } catch (err) {
+        if (isNewUserError(err)) {
+          console.log('No profile yet')
+          if (isMounted) setProfile(null)
+        } else {
+          console.error('Profile error:', err.message)
+        }
+      }
+    }
+
     initAuth()
 
-    // Set a timeout to prevent loading indefinitely
+    // Set a short timeout to prevent loading indefinitely
     timeout = setTimeout(() => {
       if (isMounted && loading) {
-        console.warn('Auth initialization timeout - setting loading to false')
+        console.warn('Auth timeout - continuing anyway')
         setLoading(false)
       }
-    }, 10000) // 10 second timeout to allow for session restoration
+    }, 2000) // 2 second timeout - don't block the UI
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, nextSession) => {
@@ -83,8 +90,12 @@ export function AuthProvider({ children }) {
             const p = await getProfile(nextSession.user.id)
             if (isMounted) setProfile(p)
           } catch (err) {
-            console.log('No profile yet - user needs to complete onboarding')
-            if (isMounted) setProfile(null)
+            if (err.message?.includes('No rows') || err.message?.includes('PGRST116')) {
+              console.log('No profile yet - user needs to complete onboarding')
+              if (isMounted) setProfile(null)
+            } else {
+              console.error('Error loading profile:', err.message)
+            }
           }
         } else {
           setProfile(null)
@@ -105,8 +116,8 @@ export function AuthProvider({ children }) {
       user: session?.user ?? null,
       profile,
       loading,
-      // Check if user has completed onboarding (has a username)
-      hasCompletedOnboarding: !!profile?.username,
+      // Only require onboarding if profile is definitively known to be missing a username
+      hasCompletedOnboarding: profile && !profile.username ? false : true,
       async refreshProfile() {
         if (!session?.user?.id) return
         const p = await getProfile(session.user.id)
