@@ -70,7 +70,6 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s;
-  width: 100%;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -100,4 +99,29 @@ body {
 
 .password-toggle:hover {
   color: #FFFFFF;
+}
+
+.btn-accent {
+  background: transparent;
+  color: #98079d;
+  border: 1px solid #98079d;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn-accent:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.grid-image {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid #262626;
 }
